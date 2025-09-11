@@ -82,6 +82,7 @@ CERTIFICATEREQUEST_CRD_FQTN="certificaterequests.cert-manager.io"
 
 CR_C_NAME="cert"
 CR_CR_NAME="cert-1"
+CR_C_SECRET_NAME="$CR_C_NAME-tls"
 
 set -e # Exit on any error
 
@@ -463,7 +464,7 @@ kind: Certificate
 metadata:
   name: $CR_C_NAME
 spec:
-  secretName: ${CR_C_NAME}-tls  # Where the Secret will be created
+  secretName: ${CR_C_SECRET_NAME}  # Where the Secret will be created
   commonName: example.com
   usages:
     - signing
@@ -495,12 +496,12 @@ delete_certificate() {
 
 # deletes the Secret associated with the Certificate resource
 delete_certificate_secret() {
-    echo "🗑️ Deleting certificate secret $CR_C_NAME-tls..."
+    echo "🗑️ Deleting certificate secret $CR_C_SECRET_NAME..."
 
-    if secret_exists "$ISSUER_NAMESPACE" "$CR_C_NAME-tls"; then
-        kubectl -n "$ISSUER_NAMESPACE" delete secret "$CR_C_NAME-tls"
+    if secret_exists "$ISSUER_NAMESPACE" "$CR_C_SECRET_NAME"; then
+        kubectl -n "$ISSUER_NAMESPACE" delete secret "$CR_C_SECRET_NAME"
     else
-        echo "⚠️ Certificate secret $CR_CR_NAME-tls not found in $ISSUER_NAMESPACE"
+        echo "⚠️ Certificate secret $CR_C_SECRET_NAME not found in $ISSUER_NAMESPACE"
     fi
 }
 
@@ -582,12 +583,12 @@ check_certificate_request_status() {
 check_for_certificate_secret() {
     echo "🔎 Checking to see if certificate secret was created..."
 
-    if secret_exists "$ISSUER_NAMESPACE" "$CR_C_NAME-tls"; then
-        echo "✅ Certificate secret $CR_CR_NAME-tls was found in $ISSUER_NAMESPACE"
+    if secret_exists "$ISSUER_NAMESPACE" "$CR_C_SECRET_NAME"; then
+        echo "✅ Certificate secret $CR_C_SECRET_NAME was found in $ISSUER_NAMESPACE"
         return 0
     fi
 
-    echo "🚫 Certificate secret $CR_CR_NAME-tls not found in $ISSUER_NAMESPACE. Test failed."
+    echo "🚫 Certificate secret $CR_C_SECRET_NAME not found in $ISSUER_NAMESPACE. Test failed."
     exit 1
 }
 
@@ -725,6 +726,16 @@ approve_certificate_request
 check_certificate_request_status
 check_for_certificate_secret
 echo "🧪✅ Test 1 completed successfully."
+echo ""
+
+echo "🧪💬 Test 2: A generated certificate request should be successfully issued by ClusterIssuer."
+regenerate_cluster_issuer
+regenerate_certificate ClusterIssuer
+wait_for_certificate_request
+approve_certificate_request
+check_certificate_request_status
+check_for_certificate_secret
+echo "🧪✅ Test 2 completed successfully."
 echo ""
 
 
