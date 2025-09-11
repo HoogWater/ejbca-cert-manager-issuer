@@ -45,8 +45,8 @@
 
 IMAGE_REPO="keyfactor"
 IMAGE_NAME="ejbca-cert-manager-issuer"
-IMAGE_TAG="2.1.0"
-# IMAGE_TAG="local" # Uncomment if you want to build the image locally # TODO
+# IMAGE_TAG="2.1.0"
+IMAGE_TAG="local" # Uncomment if you want to build the image locally
 FULL_IMAGE_NAME="${IMAGE_REPO}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 HELM_CHART_NAME="ejbca-cert-manager-issuer"
@@ -85,6 +85,8 @@ CR_CR_NAME="cert-1"
 
 set -e # Exit on any error
 
+# checks if environment variable is available in system. if it is not present but the variable is required
+# an error is thrown
 validate_env_present() {
     local env_var=$1
     local required=$2
@@ -99,6 +101,7 @@ validate_env_present() {
     fi
 }
 
+# checks whether the following environment variables are provided. some environment variables are optional.
 check_env() {
     validate_env_present HOSTNAME true
 
@@ -113,6 +116,7 @@ check_env() {
     validate_env_present OAUTH_SCOPES false
 }
 
+# checks whether the provided kubernetes namespace exists
 ns_exists () {
     local ns=$1
     if [ "$(kubectl get namespace -o json | jq --arg namespace "$ns" -e '.items[] | select(.metadata.name == $namespace) | .metadata.name')" ]; then
@@ -121,6 +125,7 @@ ns_exists () {
     return 1
 }
 
+# checks whether the provided helm chart has been deployed to the cluster (namespaced)
 helm_exists () {
     local namespace=$1
     local chart_name=$2
@@ -130,6 +135,7 @@ helm_exists () {
     return 1
 }
 
+# checks whether the provided custom resource can be found in the cluster (namespaced)
 cr_exists () {
     local fqtn=$1
     local ns=$2
@@ -141,6 +147,7 @@ cr_exists () {
     return 1
 }
 
+# checks whether the provided secret name exists in the cluster (namespaced)
 secret_exists () {
     local ns=$1
     local name=$2
@@ -151,6 +158,7 @@ secret_exists () {
     return 1
 }
 
+# installs cert-manager onto the Kubernetes cluster
 install_cert_manager() {
     echo "📦 Installing cert-manager..."
 
@@ -174,6 +182,7 @@ install_cert_manager() {
     echo "✅ cert-manager installed successfully"
 }
 
+# installs the issuer to the Kubernetes cluster
 install_cert_manager_issuer() {
     echo "📦 Installing instance of $IMAGE_NAME with tag $IMAGE_TAG..."
     
@@ -230,6 +239,7 @@ install_cert_manager_issuer() {
     echo "✅ $IMAGE_NAME installed successfully"
 }
 
+# performs a redeployment of the cert-manager. helpful for recycling TLS certificates that have expired.
 deploy_cert_manager() {
     # Restart all cert-manager components
     kubectl rollout restart deployment/cert-manager -n cert-manager
@@ -242,6 +252,7 @@ deploy_cert_manager() {
     kubectl rollout status deployment/cert-manager-cainjector -n cert-manager
 }
 
+# deploys the issuer to the Kubernetes cluster
 deploy_cert_manager_issuer() {
     # Find the deployment name (assuming it follows a pattern)
     DEPLOYMENT_NAME=$(kubectl get deployments -n ${MANAGER_NAMESPACE} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "$IMAGE_NAME")
@@ -281,6 +292,7 @@ deploy_cert_manager_issuer() {
     echo ""
 }
 
+# check the expiration of the cert-manager TLS certificate
 check_cert_manager_webhook_cert() {
     local namespace=${1:-cert-manager}
     local secret_name=${2:-cert-manager-webhook-ca}
@@ -329,6 +341,7 @@ check_cert_manager_webhook_cert() {
     fi
 }
 
+# creates a new issuer custom resource
 create_issuer() {
     echo "🔐 Creating issuer resource..."
 
@@ -371,8 +384,9 @@ EOF
     echo "✅ Issuer resources created successfully"
 }
 
+# creates a new cluster issuer custom resource
 create_cluster_issuer() {
-    echo "🔐 Creating issuer resource..."
+    echo "🔐 Creating cluster issuer resource..."
 
     secretJson='{}'
     secretJson=$(echo "$secretJson" | jq --arg version "v1" '.apiVersion = $version')
@@ -413,6 +427,7 @@ EOF
     echo "✅ Issuer resources created successfully"
 }
 
+# deletes Issuer and ClusterIssuer custom resources from the Kubernetes cluster
 delete_issuers() {
     echo "🗑️ Deleting issuer resources..."
 
@@ -436,6 +451,7 @@ delete_issuers() {
     echo "✅ Issuer resources deleted successfully"
 }
 
+# creates a Certificate custom resource. this is picked up by cert-manager and converted to a CertificateRequest.
 create_certificate() {
     local issuer_type=$1
 
@@ -465,6 +481,7 @@ spec:
 EOF
 }
 
+# deletes the Certificate custom resource
 delete_certificate() {
     echo "🗑️ Deleting certificate..."
 
@@ -476,6 +493,7 @@ delete_certificate() {
     fi
 }
 
+# deletes the Secret associated with the Certificate resource
 delete_certificate_secret() {
     echo "🗑️ Deleting certificate secret $CR_C_NAME-tls..."
 
@@ -486,6 +504,7 @@ delete_certificate_secret() {
     fi
 }
 
+# deletes the CertificateRequest custom resource
 delete_certificate_request() {
     echo "🗑️ Deleting certificate request..."
 
@@ -534,6 +553,7 @@ wait_for_certificate_request() {
     return 1
 }
 
+# approve the CertificateRequest so that the issuer can perform work on the resource
 approve_certificate_request() {
     echo "🔍 Approving certificate request..."
 
@@ -654,7 +674,7 @@ if "$IS_LOCAL_DEPLOYMENT" = "true"; then
     echo "✅ Docker image built successfully"
 
     echo "📦 Listing Docker images..."
-    docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.CreatedAt}}\t{{.Size}}" | head -11
+    docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.CreatedAt}}\t{{.Size}}" | head -5
 fi
 
 # 5. Deploy the ejbca-cert-manager-issuer Helm chart if not exists
