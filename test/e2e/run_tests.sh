@@ -230,6 +230,105 @@ install_cert_manager_issuer() {
     echo "✅ $IMAGE_NAME installed successfully"
 }
 
+deploy_cert_manager() {
+    # Restart all cert-manager components
+    kubectl rollout restart deployment/cert-manager -n cert-manager
+    kubectl rollout restart deployment/cert-manager-webhook -n cert-manager
+    kubectl rollout restart deployment/cert-manager-cainjector -n cert-manager
+
+    # Wait for them to be ready
+    kubectl rollout status deployment/cert-manager -n cert-manager
+    kubectl rollout status deployment/cert-manager-webhook -n cert-manager
+    kubectl rollout status deployment/cert-manager-cainjector -n cert-manager
+}
+
+deploy_cert_manager_issuer() {
+    # Find the deployment name (assuming it follows a pattern)
+    DEPLOYMENT_NAME=$(kubectl get deployments -n ${MANAGER_NAMESPACE} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "$IMAGE_NAME")
+
+    # Between runs, we want to make sure that the running issuer has the latest version of the code we want.
+    # Doing this patch and redeployment forces the container to restart with the latest desired version
+    if kubectl get deployment ${DEPLOYMENT_NAME} -n ${MANAGER_NAMESPACE} >/dev/null 2>&1; then
+        # Patch the deployment
+        kubectl patch deployment ${DEPLOYMENT_NAME} -n ${MANAGER_NAMESPACE} -p "{
+            \"spec\": {
+                \"template\": {
+                    \"spec\": {
+                        \"containers\": [{
+                            \"name\": \"${IMAGE_NAME}\",
+                            \"image\": \"${FULL_IMAGE_NAME}\",
+                            \"imagePullPolicy\": \"Never\"
+                        }]
+                    }
+                }
+            }
+        }"
+
+        # Rollout deployment changes and apply the patch
+        kubectl rollout restart deployment/${DEPLOYMENT_NAME} -n ${MANAGER_NAMESPACE}
+            kubectl rollout status deployment/${DEPLOYMENT_NAME} -n ${MANAGER_NAMESPACE} --timeout=300s
+
+
+        echo "✅ Deployment patched and rolled out successfully"
+    else
+        echo "⚠️  Deployment ${DEPLOYMENT_NAME} not found. The Helm chart might use a different naming convention."
+        echo "Available deployments in ${MANAGER_NAMESPACE}:"
+        kubectl get deployments -n ${MANAGER_NAMESPACE}
+    fi
+
+    echo ""
+    echo "🎉 Deployment complete!"
+    echo ""
+}
+
+check_cert_manager_webhook_cert() {
+    local namespace=${1:-cert-manager}
+    local secret_name=${2:-cert-manager-webhook-ca}
+    
+    echo "🔍 Checking cert-manager webhook certificate..."
+    
+    # Check if secret exists
+    if ! kubectl get secret "$secret_name" -n "$namespace" >/dev/null 2>&1; then
+        echo "❌ Secret $secret_name not found in namespace $namespace"
+        return 1
+    fi
+    
+    # Get certificate data
+    local cert_data=$(kubectl get secret "$secret_name" -n "$namespace" -o jsonpath='{.data.tls\.crt}' 2>/dev/null)
+    
+    if [ -z "$cert_data" ]; then
+        echo "❌ No certificate data found in secret"
+        return 1
+    fi
+    
+    # Decode and check certificate
+    local cert_info=$(echo "$cert_data" | base64 -d | openssl x509 -noout -dates 2>/dev/null)
+    
+    if [ $? -ne 0 ]; then
+        echo "❌ Failed to parse certificate"
+        return 1
+    fi
+    
+    echo "📋 Certificate validity:"
+    echo "$cert_info"
+    
+    # Check if certificate is currently valid
+    if echo "$cert_data" | base64 -d | openssl x509 -noout -checkend 0 >/dev/null 2>&1; then
+        echo "✅ Certificate is currently valid"
+        
+        # Check if expires within 7 days
+        if ! echo "$cert_data" | base64 -d | openssl x509 -noout -checkend 604800 >/dev/null 2>&1; then
+            echo "⚠️  Certificate expires within 7 days"
+            return 2  # Warning status
+        fi
+        
+        return 0  # Valid
+    else
+        echo "❌ Certificate is expired or not yet valid"
+        return 1  # Expired
+    fi
+}
+
 create_issuer() {
     echo "🔐 Creating issuer resource..."
 
@@ -541,6 +640,9 @@ else
     echo "✅ cert-manager already installed"
 fi
 
+# 2a. If cert-manager webhook certificate is out of date, redeploy it to update the certificate.
+check_cert_manager_webhook_cert || deploy_cert_manager
+
 # 3. Create ejbca-cert-manager-issuer namespace if it doesn't exist
 kubectl create namespace ${MANAGER_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
 
@@ -565,43 +667,7 @@ if helm_exists $MANAGER_NAMESPACE $IMAGE_NAME; then
 fi
 
 install_cert_manager_issuer
-
-# Find the deployment name (assuming it follows a pattern)
-DEPLOYMENT_NAME=$(kubectl get deployments -n ${MANAGER_NAMESPACE} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "$IMAGE_NAME")
-
-# Between runs, we want to make sure that the running issuer has the latest version of the code we want.
-# Doing this patch and redeployment forces the container to restart with the latest desired version
-if kubectl get deployment ${DEPLOYMENT_NAME} -n ${MANAGER_NAMESPACE} >/dev/null 2>&1; then
-    # Patch the deployment
-    kubectl patch deployment ${DEPLOYMENT_NAME} -n ${MANAGER_NAMESPACE} -p "{
-        \"spec\": {
-            \"template\": {
-                \"spec\": {
-                    \"containers\": [{
-                        \"name\": \"${IMAGE_NAME}\",
-                        \"image\": \"${FULL_IMAGE_NAME}\",
-                        \"imagePullPolicy\": \"Never\"
-                    }]
-                }
-            }
-        }
-    }"
-    
-    # Rollout deployment changes and apply the patch
-    kubectl rollout restart deployment/${DEPLOYMENT_NAME} -n ${MANAGER_NAMESPACE}
-    kubectl rollout status deployment/${DEPLOYMENT_NAME} -n ${MANAGER_NAMESPACE} --timeout=300s
-
-    
-    echo "✅ Deployment patched and rolled out successfully"
-else
-    echo "⚠️  Deployment ${DEPLOYMENT_NAME} not found. The Helm chart might use a different naming convention."
-    echo "Available deployments in ${MANAGER_NAMESPACE}:"
-    kubectl get deployments -n ${MANAGER_NAMESPACE}
-fi
-
-echo ""
-echo "🎉 Deployment complete!"
-echo ""
+deploy_cert_manager_issuer
 
 # Delete stray CertificateRequest resources from previous runs
 delete_certificate_request
