@@ -661,7 +661,7 @@ kubectl create namespace ${MANAGER_NAMESPACE} --dry-run=client -o yaml | kubectl
 
 # 4. Build the ejbca-cert-manager-issuer Docker image
 # This step is only needed if the image tag is "local"
-if "$IS_LOCAL_DEPLOYMENT" = "true"; then
+if [ "$IS_LOCAL_DEPLOYMENT" = "true" ]; then
     echo "🐳 Building ${FULL_IMAGE_NAME} Docker image..."
     docker build -t ${FULL_IMAGE_NAME} .
     echo "✅ Docker image built successfully"

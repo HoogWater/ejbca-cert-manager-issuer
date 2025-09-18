@@ -18,7 +18,7 @@ ns_exists () {
 
 echo "Building docker image"
 make docker-build DOCKER_REGISTRY=keyfactor DOCKER_IMAGE_NAME="$reconciler_chart_name" VERSION="$version"
-# kind load docker-image keyfactor/ejbca-cert-manager-issuer:latest --name chart-testing # github actions?
+kind load docker-image keyfactor/ejbca-cert-manager-issuer:latest --name chart-testing
 
 if ! kind get clusters | grep -q "^chart-testing$"; then
   kind create cluster --name chart-testing # local only
