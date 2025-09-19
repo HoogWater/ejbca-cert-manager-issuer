@@ -2,7 +2,7 @@ name: Build and Release Helm Chart
 on:
   push:
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+'     # 1.2.3 (exact match) - release candidates are excluded
+      - '[0-9]*.[0-9]*.[0-9]*'     # 1.2.3 (exact match) - release candidates are excluded
 
 jobs:
   helm:
