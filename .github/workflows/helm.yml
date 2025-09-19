@@ -7,6 +7,8 @@ on:
 jobs:
   helm:
     runs-on: ubuntu-latest
+    if: 
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-rc'))
     steps:
       - name: Set IMAGE_NAME
         run: |
