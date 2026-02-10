@@ -1,6 +1,6 @@
 module github.com/Keyfactor/ejbca-cert-manager-issuer
 
-go 1.24.0
+go 1.25
 
 require (
 	github.com/Keyfactor/ejbca-go-client-sdk v1.0.2
@@ -35,6 +35,7 @@ require (
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
