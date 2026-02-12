@@ -1,6 +1,7 @@
 module github.com/Keyfactor/ejbca-cert-manager-issuer
 
 go 1.25
+go 1.25
 
 require (
 	github.com/Keyfactor/ejbca-go-client-sdk v1.0.2
